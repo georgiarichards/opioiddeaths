@@ -61,7 +61,7 @@ pages = list(range(1,326))
 #This loops through all the pages to get the URLs to individual records
 page_string = 'https://www.judiciary.uk/subject/prevention-of-future-deaths/page/{}/'
 record_urls = []
-for page in tqdm(pages):
+for page in tqdm(pages[0:1]):
     soup = get_url(page_string.format(str(page)))
     h5s = soup.find_all('h5', {'class': 'entry-title'})
     for h5 in h5s:
@@ -126,7 +126,7 @@ for record_url in tqdm(record_urls):
             strong = death_info[0].find_all('strong')
             heads = ['date_of_report', 'ref', 'deceased_name', 'coroner_name', 'coroner_area', 'category']
             for st, h in zip(strong,heads):
-                blankdict[h] = st.next_sibling.replace(':',"").strip()
+                blankdict[h] = st.next_sibling.replace(':','').replace('Ref','').strip()
         #And another record with wonky html
         elif record_url == 'https://www.judiciary.uk/publications/helen-sheath/':
             brs = death_info[0].text.split('\n')
@@ -134,7 +134,14 @@ for record_url in tqdm(record_urls):
             for b in brs:
                 vals.append(b.split(':'))
             for v in vals:
-                blankdict[v[0].strip().replace(' ','_').lower()] = v[1].strip().replace('\n','')
+                if v[0] == "Coroners name":
+                    alt = "coroner_name"
+                    blankdict[alt] = v[1].strip().replace('\n','')
+                elif v[0] == "Coroners Area":
+                    alt = "coroner_area"
+                    blankdict[alt] = v[1].strip().replace('\n','')
+                else:
+                    blankdict[v[0].strip().replace(' ','_').lower()] = v[1].strip().replace('\n','')
         else:        
             #looping through all of the text categories for handling
             for p in death_info:
@@ -149,7 +156,7 @@ for record_url in tqdm(record_urls):
                     #Simply assigning the key and value from strings on either side of the colon, making everything 
                     #lower case and replacing spaces with underscores and also removing any stray semi-colons
                     text_list = p.text.split(':')
-                    blankdict[text_list[0].strip().replace(' ','_').lower()] = text_list[1].strip().replace('\n','')
+                    blankdict[text_list[0].strip().replace(' ','_').lower()] = text_list[1].strip().replace('\n','').replace('\xa0','')
 
                 elif 'Rebecca-EvansR.pdf' in p.text:
                     #This deals with that singular odd record that currently exists as of 8 Nov 2019
@@ -161,9 +168,9 @@ for record_url in tqdm(record_urls):
                     if any(x in p.text for x in text_cats):
                         t = [x for x in text_cats if x in p.text][0]
                         l = len(t)
-                        blankdict[t.replace(' ','_').lower()] = p.text[l+1:].replace('\n','')
+                        blankdict[t.replace(' ','_').lower()] = p.text[l+1:].replace('\n','').replace('\xa0','')
                     elif 'Coroners Area' in p.text:
-                        blankdict['coroner_area'] = p.text[13:].strip().replace('\n','')
+                        blankdict['coroner_area'] = p.text[13:].strip().replace('\n','').replace('\xa0','')
                     else:
                         print("Something we haven't accounted for has happened")
 
@@ -173,7 +180,7 @@ for record_url in tqdm(record_urls):
                     text_list = p.text.split(':')
                     new_string = text_list[0] + text_list[1]
                     new_name = re.sub(reg_exp, ' ', new_string).strip()
-                    blankdict[new_name.replace(' ','_').lower()] = text_list[2].strip().replace('\n','')
+                    blankdict[new_name.replace(' ','_').lower()] = text_list[2].strip().replace('\n','').replace('\xa0','')
 
                 elif ':' in p.text and p.text.split(':')[0] not in text_cats:
                     #Some field names are in the form of "name_of_decesased" or "name_of_coroner" or are plural/
@@ -185,7 +192,7 @@ for record_url in tqdm(record_urls):
                     else:    
                         new_name = re.sub(reg_exp, ' ', p.text)
                         text_list = new_name.split(':')
-                        blankdict[text_list[0].strip().replace(' ','_').lower()] = text_list[1].strip().replace('\n','')
+                        blankdict[text_list[0].strip().replace(' ','_').lower()] = text_list[1].strip().replace('\n','').replace('\xa0','')
         blankdict['url'] = record_url
         
         #A small little check for duplicated ref names
@@ -236,9 +243,10 @@ def save_file(path_string, name_string):
     with open(path_string.format(name_string), 'wb') as d:
         d.write(myfile.content)
 
-save_path = '/Users/georgiarichards/Desktop/Python/PFDs opioids/All_PDFs5/{}.pdf'
+#save_path = '/Users/georgiarichards/Desktop/Python/PFDs opioids/All_PDFs5/{}.pdf'
+save_path = '/Users/nicholasdevito/Desktop/untitled folder/{}.pdf'
 
-potential_names = ['ref', 'deceased_name', 'date_of_report', 'check_record_{}']
+potential_names = ['ref', 'deceased_name', 'date_of_report']
 
 record_count = 0
 #This is the final scrape to actually get the URLs and change the name (when possible) to the refs
@@ -257,45 +265,56 @@ for r_t, p_u in zip(tqdm(record_text), pdf_urls):
                 for p in p_u:
                     if counter == 0:
                         myfile = get(p)
+                        named = False
                         for x in potential_names:
                             try:
                                 if r_t[x]:
                                     save_file(save_path, r_t[x])
                                     counter +=1
+                                    named = True
                                     break
                                 else:
                                     continue
                             except KeyError:
-                                save_file(save_path, x.format(record_count))
-                                counter +=1
-                                break
+                                continue
+                        if not named:       
+                            save_file(save_path, 'check_record_{}'.format(record_count))
+                            counter +=1
+
                     else:
                         myfile = get(p)
+                        named = False
                         for x in potential_names:
                             try:
                                 if r_t[x]:
                                     save_file(save_path, r_t[x] + '_{}'.format(counter))
                                     counter +=1
+                                    named = True
                                     break
                                 else:
                                     continue
                             except KeyError:
-                                save_file(save_path, x + '_{}'.format(counter))
-                                counter +=1
-                                break
+                                continue
+                        if not named:
+                            save_file(save_path, 'check_record_{}_{}'.format(record_count, counter))
+                            counter +=1
                                     
             else:
                 myfile = get(p_u[0])
+                named = False
                 for x in potential_names:
                     try:
                         if r_t[x]:
                             save_file(save_path, r_t[x])
+                            named = True
                             break
                         else:
                             continue
                     except KeyError:
-                        save_file(save_path, x.format(record_count))
-                        break
+                        continue
+                if not named:       
+                    save_file(save_path, 'check_record_{}'.format(record_count))
+            
             record_count += 1
         
         except Exception as e:
@@ -307,6 +326,9 @@ for r_t, p_u in zip(tqdm(record_text), pdf_urls):
 # -
 
 # This is my final step that puts the text data (info on the decreased/case) into a csv file & adds the date it was pulled
+
+st = "Date of report: 19 June  2014"
+st
 
 # +
 from datetime import date
@@ -340,12 +362,8 @@ new_not_old_list
 
 len(new_not_old_list)
 
-# +
-import pandas as pd
-
 feb = pd.read_csv('death_info_2020-02-05.csv')
 aug = pd.read_csv('death_info_2020-08-13.csv')
-# -
 
 cols = list(aug.columns)
 merged = aug.merge(feb, on=cols, how='left', indicator=True)
